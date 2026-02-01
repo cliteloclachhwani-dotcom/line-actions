@@ -1,14 +1,14 @@
-body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4f7f6; position: relative; }
-.watermark { 
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
-    font-size: 80px; color: rgba(0, 0, 0, 0.03); z-index: -1; pointer-events: none; 
-}
-header { background: #2c3e50; color: white; padding: 15px; text-align: center; }
-.main-container { display: flex; height: calc(100vh - 70px); }
-#sidebar { width: 300px; background: #fff; padding: 20px; border-right: 1px solid #ddd; overflow-y: auto; }
+body { font-family: sans-serif; margin: 0; background: #f0f2f5; overflow: hidden; }
+header { background: #1e272e; color: white; padding: 15px; text-align: center; font-size: 20px; }
+.main-container { display: flex; height: calc(100vh - 60px); }
+#sidebar { width: 300px; background: #fff; padding: 20px; border-right: 1px solid #ccc; overflow-y: auto; }
+#report-display { flex: 1; padding: 20px; overflow-y: auto; position: relative; }
 .input-group { margin-bottom: 15px; }
-label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
-input { width: 90%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-button { width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-#report-area { flex: 1; padding: 20px; overflow-y: auto; }
-.chart-box { background: white; margin-bottom: 40px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; position: relative; }
+input { width: 90%; padding: 8px; border-radius: 4px; border: 1px solid #ddd; }
+button { width: 100%; padding: 12px; background: #05c46b; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+.report-card { background: #fff; margin-bottom: 50px; padding: 30px; border: 1px solid #000; position: relative; min-height: 600px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+.watermark-bg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 100px; color: rgba(0,0,0,0.03); z-index: -1; pointer-events: none; white-space: nowrap; }
+.chart-container { height: 400px; width: 100%; margin: 20px 0; }
+.btn-group { display: flex; gap: 10px; margin-top: 15px; }
+.btn-html { background: #3498db; }
+.btn-pdf { background: #e74c3c; }
