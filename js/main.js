@@ -1,7 +1,8 @@
 let masters = [];
+let chartInstance = null;
 
-// 1. Master Files Load
-async function loadMasters() {
+// Load all CSVs (Stations and Signals)
+async function initMasters() {
     const files = ['station.csv', 'up_signals.csv', 'dn_signals.csv', 'up_mid_signals.csv', 'dn_mid_signals.csv'];
     for (let f of files) {
         Papa.parse(`master_data/${f}`, {
@@ -11,119 +12,126 @@ async function loadMasters() {
     }
 }
 
-// Coordinate Conversion DDMM.mmmm -> Decimal
-function conv(v) {
+function ddmToDec(v) {
     if (!v) return 0;
     let f = parseFloat(v);
     let deg = Math.floor(f / 100);
     return deg + (f - deg * 100) / 60;
 }
 
-// 2. Mapping between two locations
-function getMapLabel(lat, lng) {
-    let sorted = masters.map(m => ({
-        name: m.SIGNAL_NAME || m.Station_Name,
-        lat: conv(m.Lat || m['Start_Lat ']),
-        lng: conv(m.Lng || m.Start_Lng)
-    })).sort((a, b) => Math.hypot(lat - a.lat, lng - a.lng) - Math.hypot(lat - b.lat, lng - b.lng));
-
-    return `<${sorted[0].name} - ${sorted[1].name}>`;
+// Map coordinates to nearest Signal/LC/NS
+function findNearestMarker(lat, lng) {
+    let nearest = { name: "Route", dist: Infinity };
+    masters.forEach(m => {
+        let mLat = ddmToDec(m.Lat || m['Start_Lat ']);
+        let mLng = ddmToDec(m.Lng || m.Start_Lng);
+        let d = Math.hypot(lat - mLat, lng - mLng);
+        if (d < nearest.dist) nearest = { name: m.SIGNAL_NAME || m.Station_Name, dist: d };
+    });
+    return nearest.name;
 }
 
-// 3. Halt Detection (01 kmph / 10 sec)
-function processData() {
-    const file = document.getElementById('locoFile').files[0];
-    if (!file) return alert("File choose karein!");
+function startAnalysis() {
+    const file = document.getElementById('rtisInput').files[0];
+    if (!file) return alert("Select File");
 
     Papa.parse(file, {
         header: true, dynamicTyping: true,
         complete: (results) => {
-            let data = results.data;
-            let halts = [];
-            let stopInfo = null;
-
+            const data = results.data;
+            let haltPoints = [];
+            
+            // 1. Halt Detection (<1 kmph)
             data.forEach((row, i) => {
-                if (row.Speed < 1) { // 01 KMPH Limit
-                    if (!stopInfo) stopInfo = { startIdx: i, time: row['Logging Time'], lat: row.Latitude, lng: row.Longitude };
-                } else {
-                    if (stopInfo) {
-                        let duration = (new Date(row['Logging Time']) - new Date(stopInfo.time)) / 1000;
-                        if (duration >= 10) { // 10 Sec Limit
-                            halts.push({
-                                label: getMapLabel(stopInfo.lat, stopInfo.lng),
-                                time: stopInfo.time,
-                                dur: duration.toFixed(0),
-                                braking: extract1100m(data, stopInfo.startIdx)
-                            });
+                if (row.Speed < 1) {
+                    let markerName = findNearestMarker(row.Latitude, row.Longitude);
+                    // Extract 1100m data
+                    let brakingProfile = [];
+                    let d = 0;
+                    for (let j = i; j >= 0 && d <= 1100; j--) {
+                        if (j < i) d += Math.abs(data[j].distFromPrevLatLng || 0.5);
+                        
+                        // Smoothing: 2-3kmph fluctuation remove karein, 20m par raw rakhein
+                        let spd = data[j].Speed;
+                        if (d > 20 && j > 0 && j < data.length - 1) {
+                            spd = (data[j-1].Speed + data[j].Speed + data[j+1].Speed) / 3;
                         }
-                        stopInfo = null;
+
+                        brakingProfile.push({
+                            x: Math.round(d), 
+                            y: parseFloat(spd.toFixed(2)),
+                            time: data[j]['Logging Time'],
+                            marker: findNearestMarker(data[j].Latitude, data[j].Longitude)
+                        });
                     }
+                    
+                    haltPoints.push({
+                        label: `Stop @ ${markerName} (${data[i]['Logging Time']})`,
+                        data: brakingProfile,
+                        startSpeed2000: data[Math.max(0, i-200)]?.Speed || 0 // Speed at roughly 2000m ago
+                    });
+                    
+                    // Skip analysis for this halt duration to find next one
+                    i += 60; 
                 }
             });
-            renderReports(halts);
+
+            document.getElementById('haltCountDisplay').innerText = `Halts Found: ${haltPoints.length}`;
+            drawChart(haltPoints);
         }
     });
 }
 
-function extract1100m(data, idx) {
-    let segment = [];
-    let dist = 0;
-    for (let i = idx; i >= 0 && dist <= 1100; i--) {
-        if (i < idx) dist += Math.abs(data[i].distFromPrevLatLng || 0.5);
-        segment.push({ x: dist, y: data[i].Speed });
-    }
-    return segment;
-}
+function drawChart(halts) {
+    const ctx = document.getElementById('mainBrakingChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
 
-function renderReports(halts) {
-    const container = document.getElementById('report-display');
-    container.innerHTML = "";
-    const manual = {
-        loco: document.getElementById('locoNo').value,
-        train: document.getElementById('trainNo').value,
-        lp: document.getElementById('lpId').value,
-        date: document.getElementById('reportDate').value
-    };
+    const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#1abc9c', '#e67e22', '#34495e', '#d35400', '#27ae60'];
 
-    halts.forEach((h, i) => {
-        const div = document.createElement('div');
-        div.className = "report-card";
-        div.id = `report-${i}`;
-        div.innerHTML = `
-            <div style="text-align:center; border-bottom: 2px solid #000;">
-                <h2>BRAKING ANALYSIS REPORT</h2>
-                <p>Date: ${manual.date} | Loco: ${manual.loco} | Train: ${manual.train} | LP ID: ${manual.lp}</p>
-            </div>
-            <h3>STOP LOCATION: ${h.label}</h3>
-            <p>Halt Time: ${h.time} | Duration: ${h.dur} sec</p>
-            <div class="chart-container"><canvas id="c-${i}"></canvas></div>
-            <div class="btn-group">
-                <button class="btn-html" onclick="saveHTML(${i})">Download HTML</button>
-                <button class="btn-pdf" onclick="savePDF(${i})">Save as PDF</button>
-            </div>
-        `;
-        container.appendChild(div);
-        createBrakingChart(`c-${i}`, h.braking, h.braking[h.braking.length-1].y.toFixed(1));
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: halts.map((h, i) => ({
+                label: h.label,
+                data: h.data,
+                borderColor: colors[i % colors.length],
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.4, // Smoothing
+                segment: {
+                    // Disable smoothing at 20m
+                    borderDash: ctx => ctx.p1.raw.x < 20 ? [] : [] 
+                }
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
+            scales: {
+                x: {
+                    type: 'linear', reverse: true, min: 0, max: 1100,
+                    ticks: { stepSize: 50 },
+                    title: { display: true, text: 'Distance from Stop (Meters)' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 5 },
+                    title: { display: true, text: 'Speed (KMPH)' }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let p = context.raw;
+                            return `Spd: ${p.y} | Dist: ${p.x}m | Time: ${p.time} | Signal/LC: ${p.marker}`;
+                        }
+                    }
+                }
+            }
+        }
     });
 }
 
-// PDF & HTML Saving logic
-function saveHTML(id) {
-    const content = document.getElementById(`report-${id}`).innerHTML;
-    const blob = new Blob([`<html><body style="font-family:sans-serif">${content}</body></html>`], {type: 'text/html'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `Report_Stop_${id+1}.html`;
-    a.click();
-}
-
-async function savePDF(id) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('l', 'mm', 'a4');
-    const element = document.getElementById(`report-${id}`);
-    const canvas = await html2canvas(element);
-    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, 280, 180);
-    doc.save(`Report_Stop_${id+1}.pdf`);
-}
-
-loadMasters();
+initMasters();
