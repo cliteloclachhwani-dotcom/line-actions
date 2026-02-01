@@ -1,0 +1,27 @@
+<div id="sidebar">
+    <div class="input-group">
+        <label>Date</label>
+        <input type="date" id="reportDate" max=""> </div>
+    <div class="input-group">
+        <label>Loco Number (Manual)</label>
+        <input type="text" id="locoNo" placeholder="e.g. 33742">
+    </div>
+    <div class="input-group">
+        <label>Train Number (Manual)</label>
+        <input type="text" id="trainNo" placeholder="e.g. 12834">
+    </div>
+    <div class="input-group">
+        <label>LP ID (Manual)</label>
+        <input type="text" id="lpId" placeholder="e.g. SECR123">
+    </div>
+    <div class="input-group">
+        <label>RTIS Loco File (.csv)</label>
+        <input type="file" id="locoFile" accept=".csv">
+    </div>
+    <button id="analyzeBtn">Generate Interactive Report</button>
+</div>
+
+<script>
+    // Future date block karne ke liye
+    document.getElementById('reportDate').max = new Date().toISOString().split("T")[0];
+</script>
